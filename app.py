@@ -16,6 +16,7 @@ from src.suggest_api import (
     fetch_suggestions_with_alphabet_soup,
     flatten_unique_suggestions,
 )
+from src.trends_api import get_interest_over_time, get_related_queries
 from src.utils import format_number, video_url
 from src.youtube_api import QuotaExceededError, get_quota_tracker
 
@@ -100,7 +101,7 @@ with st.sidebar:
     st.caption(f"残り約 {tracker.remaining:,} ユニット")
 
 # ─── メインコンテンツ（タブ） ─────────────────────────
-tab_suggest, tab_buzz = st.tabs(["サジェストキーワード", "バズ動画分析"])
+tab_suggest, tab_buzz, tab_trends = st.tabs(["サジェストキーワード", "バズ動画分析", "トレンド調査"])
 
 # ─── タブ1: サジェストキーワード ──────────────────────
 with tab_suggest:
@@ -247,3 +248,68 @@ with tab_buzz:
 
     elif "analyzed_videos" in st.session_state:
         st.info("条件に一致する動画が見つかりませんでした。フィルタ条件を緩めてお試しください。")
+
+# ─── タブ3: トレンド調査 ─────────────────────────────
+with tab_trends:
+    st.subheader("トレンド調査")
+    st.caption("Google Trends のデータから、キーワードの検索ボリューム推移と関連キーワードを表示します。APIクォータ消費なし。")
+
+    trend_period = st.selectbox(
+        "調査期間",
+        options=["過去12ヶ月", "過去3ヶ月", "過去1ヶ月", "過去7日"],
+        key="trend_period",
+    )
+    period_map = {
+        "過去12ヶ月": "today 12-m",
+        "過去3ヶ月": "today 3-m",
+        "過去1ヶ月": "today 1-m",
+        "過去7日": "now 7-d",
+    }
+
+    if st.button("トレンド調査開始", type="primary", use_container_width=True):
+        if not search_query:
+            st.warning("サイドバーで検索キーワードを入力してください。")
+        else:
+            try:
+                with st.spinner("Google Trends データ取得中..."):
+                    timeframe = period_map[trend_period]
+                    interest_df = get_interest_over_time(search_query, timeframe=timeframe)
+                    related = get_related_queries(search_query)
+
+                st.session_state["trend_interest"] = interest_df
+                st.session_state["trend_related"] = related
+                st.session_state["trend_keyword"] = search_query
+
+            except Exception as e:
+                st.error(f"データ取得に失敗しました: {e}")
+
+    if "trend_interest" in st.session_state and st.session_state.get("trend_keyword"):
+        kw = st.session_state["trend_keyword"]
+        interest_df = st.session_state["trend_interest"]
+        related = st.session_state["trend_related"]
+
+        # 検索ボリューム推移グラフ
+        st.markdown(f"### 「{kw}」の検索ボリューム推移")
+        if not interest_df.empty:
+            st.line_chart(interest_df[kw], use_container_width=True, height=300)
+        else:
+            st.info("この期間のデータがありません。")
+
+        # 関連キーワード
+        col_rising, col_top = st.columns(2)
+
+        with col_rising:
+            st.markdown("### 急上昇キーワード")
+            rising_df = related.get("rising", pd.DataFrame())
+            if not rising_df.empty:
+                st.dataframe(rising_df, use_container_width=True, height=400)
+            else:
+                st.info("急上昇キーワードが見つかりませんでした。")
+
+        with col_top:
+            st.markdown("### 人気キーワード")
+            top_df = related.get("top", pd.DataFrame())
+            if not top_df.empty:
+                st.dataframe(top_df, use_container_width=True, height=400)
+            else:
+                st.info("人気キーワードが見つかりませんでした。")
