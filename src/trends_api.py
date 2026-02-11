@@ -9,59 +9,46 @@ import requests
 from pytrends.request import TrendReq
 
 
-def get_trending_searches(geo: str = "JP", days: int = 7) -> pd.DataFrame:
-    """急上昇キーワードを取得する（Google Trends Daily Trends API）.
+def get_trending_searches(geo: str = "JP") -> list[dict]:
+    """急上昇キーワードを取得する（Google Trends RSSから）.
 
     Args:
         geo: 地域コード（"JP", "US" 等）
-        days: 取得する日数（1〜7）
 
     Returns:
-        急上昇キーワードのDataFrame（日付・キーワード・検索ボリューム）
+        [{"keyword": str, "traffic": str, "news": [{"title": str, "source": str, "url": str}]}]
     """
-    import json
-    from datetime import datetime, timedelta
+    url = f"https://trends.google.com/trending/rss?geo={geo}"
+    resp = requests.get(url, timeout=15)
+    resp.raise_for_status()
 
-    all_keywords = []
-    seen = set()
+    root = ET.fromstring(resp.content)
+    ns = {"ht": "https://trends.google.com/trending/rss"}
 
-    for d in range(days):
-        target = datetime.now() - timedelta(days=d)
-        ed = target.strftime("%Y%m%d")
-        url = (
-            f"https://trends.google.com/trends/api/dailytrends"
-            f"?hl=ja&tz=-540&geo={geo}&ns=15&ed={ed}"
-        )
-        try:
-            resp = requests.get(url, timeout=15)
-            resp.raise_for_status()
-            # レスポンス先頭の ")]}'" を除去
-            text = resp.text
-            if text.startswith(")]}'"):
-                text = text[5:]
-            data = json.loads(text)
-
-            trend_days = data.get("default", {}).get("trendingSearchesDays", [])
-            for day_data in trend_days:
-                date_str = day_data.get("formattedDate", "")
-                for search in day_data.get("trendingSearches", []):
-                    title = search.get("title", {}).get("query", "")
-                    traffic = search.get("formattedTraffic", "")
-                    if title and title not in seen:
-                        seen.add(title)
-                        all_keywords.append({
-                            "日付": date_str,
-                            "キーワード": title,
-                            "検索ボリューム": traffic,
-                        })
-        except Exception:
+    results = []
+    for item in root.iter("item"):
+        keyword = item.findtext("title", "")
+        traffic = item.findtext("ht:approx_traffic", "", ns)
+        picture = item.findtext("ht:picture", "", ns)
+        if not keyword:
             continue
 
-    df = pd.DataFrame(all_keywords)
-    if not df.empty:
-        df.index = range(1, len(df) + 1)
-        df.index.name = "順位"
-    return df
+        news_items = []
+        for ni in item.findall("ht:news_item", ns):
+            news_items.append({
+                "title": ni.findtext("ht:news_item_title", "", ns),
+                "source": ni.findtext("ht:news_item_source", "", ns),
+                "url": ni.findtext("ht:news_item_url", "", ns),
+            })
+
+        results.append({
+            "keyword": keyword,
+            "traffic": traffic,
+            "picture": picture,
+            "news": news_items,
+        })
+
+    return results
 
 
 def get_interest_over_time(

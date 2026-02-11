@@ -555,24 +555,49 @@ with tab_trends:
     st.caption("Google Trends のデータから、今注目されている検索キーワードを確認できます。APIクォータ消費なし。")
 
     # ── セクション1: 今日の急上昇ワード（キーワード不要） ──
-    st.markdown("### 急上昇検索ワード（日本・過去7日間）")
-    st.caption("Google検索で直近7日間に急上昇したキーワード一覧。キーワード指定不要で取得できます。")
+    st.markdown("### 今日の急上昇検索ワード（日本）")
+    st.caption("Google検索で今日急上昇しているキーワードTOP10と関連ニュース。キーワード指定不要。")
 
     if st.button("急上昇ワードを取得", use_container_width=True, key="trending_searches_btn"):
         try:
             with st.spinner("Google Trends 急上昇ワードを取得中..."):
-                trending_df = get_trending_searches(geo="JP")
-            st.session_state["trending_searches"] = trending_df
+                trending_data = get_trending_searches(geo="JP")
+            st.session_state["trending_searches"] = trending_data
         except Exception as e:
             st.error(f"取得に失敗しました: {e}")
 
     if "trending_searches" in st.session_state:
-        trending_df = st.session_state["trending_searches"]
-        if not trending_df.empty:
-            st.success(f"{len(trending_df)} 件の急上昇ワードを取得")
-            st.dataframe(trending_df, use_container_width=True, height=500)
+        trending_data = st.session_state["trending_searches"]
+        if trending_data:
+            st.success(f"{len(trending_data)} 件の急上昇ワードを取得")
 
-            csv_trending_kw = trending_df.to_csv().encode("utf-8-sig")
+            for rank, item in enumerate(trending_data, 1):
+                with st.container(border=True):
+                    col_rank, col_info = st.columns([1, 6])
+                    with col_rank:
+                        st.markdown(f"## {rank}")
+                        st.caption(item["traffic"])
+                    with col_info:
+                        st.markdown(f"### {item['keyword']}")
+                        for news in item.get("news", [])[:2]:
+                            st.markdown(
+                                f"- [{news['title']}]({news['url']})　"
+                                f"*{news['source']}*"
+                            )
+
+            # CSVダウンロード
+            csv_rows = []
+            for rank, item in enumerate(trending_data, 1):
+                csv_rows.append({
+                    "順位": rank,
+                    "キーワード": item["keyword"],
+                    "検索ボリューム": item["traffic"],
+                    "関連ニュース": " / ".join(
+                        n["title"] for n in item.get("news", [])[:2]
+                    ),
+                })
+            df_csv = pd.DataFrame(csv_rows)
+            csv_trending_kw = df_csv.to_csv(index=False).encode("utf-8-sig")
             st.download_button(
                 "CSVダウンロード",
                 csv_trending_kw,
