@@ -16,3 +16,6 @@ class SessionKeys:
     TREND_INTEREST = "trend_interest"
     TREND_RELATED = "trend_related"
     TREND_KEYWORD = "trend_keyword"
+    GOOGLE_RANKING_QUERIES = "google_ranking_queries"
+    GOOGLE_RANKING_TOPICS = "google_ranking_topics"
+    GOOGLE_RANKING_CATEGORY = "google_ranking_category"

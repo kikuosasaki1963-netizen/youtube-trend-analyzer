@@ -117,6 +117,54 @@ def get_related_topics(
     return _extract_rising_top(related, keyword)
 
 
+def get_category_related_queries(
+    cat: int = 0,
+    timeframe: str = "today 12-m",
+    geo: str = "JP",
+) -> dict[str, pd.DataFrame]:
+    """カテゴリ別の人気・急上昇検索ワードを取得する.
+
+    Args:
+        cat: Google Trendsカテゴリ番号（0=全体）
+        timeframe: 期間
+        geo: 地域コード
+
+    Returns:
+        {"rising": DataFrame, "top": DataFrame}
+    """
+    pytrends = TrendReq(hl="ja-JP", tz=540)
+    pytrends.build_payload(kw_list=[""], cat=cat, timeframe=timeframe, geo=geo)
+    related = pytrends.related_queries()
+
+    return _extract_rising_top(related, "")
+
+
+def get_category_related_topics(
+    cat: int = 0,
+    timeframe: str = "today 12-m",
+    geo: str = "JP",
+) -> dict[str, pd.DataFrame]:
+    """カテゴリ別の人気・急上昇トピックを取得する.
+
+    Args:
+        cat: Google Trendsカテゴリ番号（0=全体）
+        timeframe: 期間
+        geo: 地域コード
+
+    Returns:
+        {"rising": DataFrame, "top": DataFrame}
+    """
+    pytrends = TrendReq(hl="ja-JP", tz=540)
+    pytrends.build_payload(kw_list=[""], cat=cat, timeframe=timeframe, geo=geo)
+    try:
+        related = pytrends.related_topics()
+    except (IndexError, KeyError):
+        logger.warning("カテゴリ別トピック取得でpytrends内部エラー（cat=%d）", cat)
+        return {"rising": pd.DataFrame(), "top": pd.DataFrame()}
+
+    return _extract_rising_top(related, "")
+
+
 def _extract_rising_top(
     related: dict, keyword: str,
 ) -> dict[str, pd.DataFrame]:
