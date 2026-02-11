@@ -109,7 +109,7 @@ with st.sidebar:
     st.caption(f"残り約 {tracker.remaining:,} ユニット")
 
 # ─── メインコンテンツ（タブ） ─────────────────────────
-tab_hot, tab_suggest, tab_buzz, tab_trends = st.tabs(["急上昇トレンド", "サジェストキーワード", "バズ動画分析", "トレンド調査"])
+tab_hot, tab_genre, tab_suggest, tab_buzz, tab_trends = st.tabs(["急上昇トレンド", "ジャンル別ランキング", "サジェストキーワード", "バズ動画分析", "トレンド調査"])
 
 # ─── タブ0: 急上昇トレンド ────────────────────────────
 with tab_hot:
@@ -190,6 +190,157 @@ with tab_hot:
             file_name="youtube_trending_jp.csv",
             mime="text/csv",
             key="trending_csv",
+        )
+
+# ─── タブ: ジャンル別ランキング ──────────────────────
+with tab_genre:
+    st.subheader("ジャンル別 人気キーワードランキング")
+    st.caption("指定ジャンル・期間で再生数の多い動画からバズキーワードを抽出します。（102ユニット/回）")
+
+    from src.trending import CATEGORY_MAP, extract_keywords_from_titles
+
+    genre_col1, genre_col2 = st.columns(2)
+    with genre_col1:
+        genre_options = {"全ジャンル": "0"} | {v: k for k, v in CATEGORY_MAP.items()}
+        selected_genre = st.selectbox("ジャンル", options=list(genre_options.keys()), key="genre_select")
+    with genre_col2:
+        genre_period_options = {
+            "過去7日": 7,
+            "過去30日": 30,
+            "過去90日": 90,
+            "過去1年": 365,
+        }
+        selected_period = st.selectbox("期間", options=list(genre_period_options.keys()), key="genre_period")
+
+    if st.button("ランキング取得", type="primary", use_container_width=True, key="genre_btn"):
+        days = genre_period_options[selected_period]
+        dt = datetime.utcnow() - timedelta(days=days)
+        published_after = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+        category_id = genre_options[selected_genre]
+
+        try:
+            with st.spinner(f"「{selected_genre}」の人気動画を検索中..."):
+                from src.youtube_api import search_videos, get_video_details
+
+                # search.list で再生数順に取得
+                search_params = {
+                    "api_key": api_key,
+                    "query": "",
+                    "max_results": 50,
+                    "published_after": published_after,
+                }
+                youtube = __import__("src.youtube_api", fromlist=["get_youtube_client"]).get_youtube_client(api_key)
+
+                params = {
+                    "part": "snippet",
+                    "type": "video",
+                    "maxResults": 50,
+                    "order": "viewCount",
+                    "regionCode": "JP",
+                    "publishedAfter": published_after,
+                }
+                if category_id != "0":
+                    params["videoCategoryId"] = category_id
+
+                response = youtube.search().list(**params).execute()
+                from src.youtube_api import get_quota_tracker as _gqt
+                _gqt().add(100)
+
+                items = response.get("items", [])
+
+                # video details で再生数取得
+                video_ids = tuple(item["id"]["videoId"] for item in items if "videoId" in item.get("id", {}))
+                video_stats = get_video_details(api_key, video_ids) if video_ids else {}
+
+                # VideoInfoライクな構造に変換
+                genre_videos = []
+                for item in items:
+                    vid = item.get("id", {}).get("videoId", "")
+                    if not vid:
+                        continue
+                    snippet = item["snippet"]
+                    stats = video_stats.get(vid, {})
+                    thumbnails = snippet.get("thumbnails", {})
+                    thumb_url = (
+                        thumbnails.get("high", {}).get("url")
+                        or thumbnails.get("medium", {}).get("url")
+                        or thumbnails.get("default", {}).get("url", "")
+                    )
+                    genre_videos.append({
+                        "id": vid,
+                        "snippet": snippet,
+                        "statistics": stats,
+                        "thumbnail_url": thumb_url,
+                        "view_count": int(stats.get("viewCount", 0)),
+                    })
+
+                genre_videos.sort(key=lambda x: x["view_count"], reverse=True)
+                st.session_state["genre_videos"] = genre_videos
+                st.session_state["genre_label"] = f"{selected_genre}（{selected_period}）"
+
+        except QuotaExceededError:
+            st.warning("APIクォータを超過しました。")
+
+    if "genre_videos" in st.session_state and st.session_state["genre_videos"]:
+        genre_videos = st.session_state["genre_videos"]
+        label = st.session_state.get("genre_label", "")
+        st.success(f"「{label}」: {len(genre_videos)} 件の動画を取得")
+
+        # キーワードランキング
+        st.markdown(f"### バズキーワード ランキング - {label}")
+        # snippet構造を持つのでそのまま使える
+        keywords = extract_keywords_from_titles(genre_videos)
+        if keywords:
+            kw_df = pd.DataFrame(keywords, columns=["キーワード", "出現回数"])
+            col_chart, col_table = st.columns([2, 1])
+            with col_chart:
+                st.bar_chart(kw_df.set_index("キーワード"), horizontal=True, height=600)
+            with col_table:
+                st.dataframe(kw_df, use_container_width=True, height=600)
+
+        # 動画サムネイル一覧
+        st.markdown(f"### 人気動画 TOP15 - {label}")
+        cols_per_row = 3
+        for i in range(0, min(len(genre_videos), 15), cols_per_row):
+            cols = st.columns(cols_per_row)
+            for j, col in enumerate(cols):
+                idx = i + j
+                if idx >= len(genre_videos):
+                    break
+                v = genre_videos[idx]
+                snippet = v.get("snippet", {})
+                with col:
+                    with st.container(border=True):
+                        st.image(v["thumbnail_url"], use_container_width=True)
+                        vid_url = f"https://www.youtube.com/watch?v={v['id']}"
+                        st.markdown(f"**[{snippet.get('title', '')}]({vid_url})**")
+                        st.caption(
+                            f"{snippet.get('channelTitle', '')} / "
+                            f"{format_number(v['view_count'])}回再生"
+                        )
+
+        # CSVダウンロード
+        st.divider()
+        rows = []
+        for v in genre_videos:
+            snippet = v.get("snippet", {})
+            rows.append({
+                "タイトル": snippet.get("title", ""),
+                "チャンネル": snippet.get("channelTitle", ""),
+                "再生数": v["view_count"],
+                "公開日": snippet.get("publishedAt", "")[:10],
+                "動画URL": f"https://www.youtube.com/watch?v={v['id']}",
+            })
+        df_genre = pd.DataFrame(rows)
+        st.dataframe(df_genre, use_container_width=True, height=400)
+
+        csv_genre = df_genre.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            "CSVダウンロード",
+            csv_genre,
+            file_name=f"genre_ranking_{selected_genre}.csv",
+            mime="text/csv",
+            key="genre_csv",
         )
 
 # ─── タブ1: サジェストキーワード ──────────────────────
