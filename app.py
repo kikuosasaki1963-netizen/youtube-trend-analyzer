@@ -648,9 +648,23 @@ with tab_trends:
         related = st.session_state["trend_related"]
 
         # 検索ボリューム推移グラフ
-        st.markdown(f"### 「{kw}」の検索ボリューム推移")
+        st.markdown(f"### 「{kw}」の検索人気度推移")
         if not interest_df.empty:
+            peak_val = int(interest_df[kw].max())
+            peak_date = interest_df[kw].idxmax().strftime("%Y-%m-%d")
+            current_val = int(interest_df[kw].iloc[-1])
+
+            col_m1, col_m2, col_m3 = st.columns(3)
+            col_m1.metric("ピーク日", peak_date)
+            col_m2.metric("ピーク値", f"{peak_val}（= 100%）")
+            col_m3.metric("現在の人気度", f"{current_val}")
+
             st.line_chart(interest_df[kw], use_container_width=True, height=300)
+            st.caption(
+                "※ 数値はGoogle Trendsの**相対的な人気度**（0〜100）です。"
+                "100 = 期間内で最も検索された時点。"
+                "実際の検索回数はGoogleが非公開のため取得できません。"
+            )
         else:
             st.info("この期間のデータがありません。")
 
