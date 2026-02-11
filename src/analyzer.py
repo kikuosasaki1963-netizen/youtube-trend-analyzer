@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import pandas as pd
-import streamlit as st
 
-from src.utils import format_number, video_url, channel_url
+from src.ui_components import extract_thumbnail_url
+from src.utils import video_url, channel_url
 from src.youtube_api import (
     VideoInfo,
     get_channel_details,
@@ -38,7 +36,23 @@ def fetch_and_analyze(
     if not search_results:
         return []
 
-    # 検索結果からID・基本情報を抽出
+    # Step 2: 検索結果からID・基本情報を抽出
+    videos, video_ids, channel_ids_set = _extract_search_info(search_results)
+
+    # Step 3: 動画・チャンネル統計情報を取得
+    video_stats = get_video_details(api_key, tuple(video_ids))
+    channel_stats = get_channel_details(api_key, tuple(channel_ids_set))
+
+    # Step 4: V/S比率計算
+    _calculate_vs_ratios(videos, video_stats, channel_stats)
+
+    return videos
+
+
+def _extract_search_info(
+    search_results: list[dict],
+) -> tuple[list[VideoInfo], list[str], set[str]]:
+    """検索結果からVideoInfo・動画ID・チャンネルIDを抽出する."""
     videos: list[VideoInfo] = []
     video_ids: list[str] = []
     channel_ids_set: set[str] = set()
@@ -48,12 +62,6 @@ def fetch_and_analyze(
         vid = item["id"]["videoId"]
         video_ids.append(vid)
         channel_ids_set.add(snippet["channelId"])
-        thumbnails = snippet.get("thumbnails", {})
-        thumb_url = (
-            thumbnails.get("high", {}).get("url")
-            or thumbnails.get("medium", {}).get("url")
-            or thumbnails.get("default", {}).get("url", "")
-        )
         videos.append(
             VideoInfo(
                 video_id=vid,
@@ -61,17 +69,19 @@ def fetch_and_analyze(
                 channel_id=snippet["channelId"],
                 channel_title=snippet.get("channelTitle", ""),
                 published_at=snippet.get("publishedAt", ""),
-                thumbnail_url=thumb_url,
+                thumbnail_url=extract_thumbnail_url(snippet),
             )
         )
 
-    # Step 2: 動画統計情報
-    video_stats = get_video_details(api_key, tuple(video_ids))
+    return videos, video_ids, channel_ids_set
 
-    # Step 3: チャンネル統計情報
-    channel_stats = get_channel_details(api_key, tuple(channel_ids_set))
 
-    # Step 4: V/S比率計算
+def _calculate_vs_ratios(
+    videos: list[VideoInfo],
+    video_stats: dict[str, dict],
+    channel_stats: dict[str, dict],
+) -> None:
+    """動画リストにV/S比率を計算・設定する（in-place）."""
     for v in videos:
         stats = video_stats.get(v.video_id, {})
         v.view_count = int(stats.get("viewCount", 0))
@@ -87,8 +97,6 @@ def fetch_and_analyze(
         else:
             v.vs_ratio = 0.0
 
-    return videos
-
 
 def filter_videos(
     videos: list[VideoInfo],
@@ -103,6 +111,9 @@ def filter_videos(
         max_subscribers: 登録者数上限
         min_views: 再生数下限
         min_vs_ratio: V/S比率下限
+
+    Returns:
+        フィルタ適用後のVideoInfoリスト
     """
     result = videos
     if max_subscribers is not None:

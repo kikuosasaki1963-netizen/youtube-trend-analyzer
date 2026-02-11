@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import xml.etree.ElementTree as ET
 
 import pandas as pd
 import requests
 from pytrends.request import TrendReq
+
+logger = logging.getLogger("youtube_analyzer")
 
 
 def get_trending_searches(geo: str = "JP") -> list[dict]:
@@ -16,13 +19,21 @@ def get_trending_searches(geo: str = "JP") -> list[dict]:
         geo: 地域コード（"JP", "US" 等）
 
     Returns:
-        [{"keyword": str, "traffic": str, "news": [{"title": str, "source": str, "url": str}]}]
+        [{"keyword": str, "traffic": str, "news": [...]}]
+
+    Raises:
+        requests.RequestException: ネットワークエラー時
     """
     url = f"https://trends.google.com/trending/rss?geo={geo}"
     resp = requests.get(url, timeout=15)
     resp.raise_for_status()
 
-    root = ET.fromstring(resp.content)
+    try:
+        root = ET.fromstring(resp.content)
+    except ET.ParseError:
+        logger.warning("Google Trends RSS: XML解析に失敗しました")
+        return []
+
     ns = {"ht": "https://trends.google.com/trending/rss"}
 
     results = []
@@ -87,17 +98,7 @@ def get_related_queries(
     pytrends.build_payload([keyword], cat=0, timeframe="today 12-m", geo=geo)
     related = pytrends.related_queries()
 
-    result: dict[str, pd.DataFrame] = {}
-    if keyword in related:
-        rising = related[keyword].get("rising")
-        top = related[keyword].get("top")
-        result["rising"] = rising if rising is not None else pd.DataFrame()
-        result["top"] = top if top is not None else pd.DataFrame()
-    else:
-        result["rising"] = pd.DataFrame()
-        result["top"] = pd.DataFrame()
-
-    return result
+    return _extract_rising_top(related, keyword)
 
 
 def get_related_topics(
@@ -113,14 +114,20 @@ def get_related_topics(
     pytrends.build_payload([keyword], cat=0, timeframe="today 12-m", geo=geo)
     related = pytrends.related_topics()
 
-    result: dict[str, pd.DataFrame] = {}
-    if keyword in related:
-        rising = related[keyword].get("rising")
-        top = related[keyword].get("top")
-        result["rising"] = rising if rising is not None else pd.DataFrame()
-        result["top"] = top if top is not None else pd.DataFrame()
-    else:
-        result["rising"] = pd.DataFrame()
-        result["top"] = pd.DataFrame()
+    return _extract_rising_top(related, keyword)
 
-    return result
+
+def _extract_rising_top(
+    related: dict, keyword: str,
+) -> dict[str, pd.DataFrame]:
+    """pytrends結果からrising/topを安全に抽出する."""
+    if keyword not in related:
+        return {"rising": pd.DataFrame(), "top": pd.DataFrame()}
+
+    data = related[keyword]
+    rising = data.get("rising")
+    top = data.get("top")
+    return {
+        "rising": rising if rising is not None else pd.DataFrame(),
+        "top": top if top is not None else pd.DataFrame(),
+    }

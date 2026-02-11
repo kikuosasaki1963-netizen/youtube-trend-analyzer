@@ -41,6 +41,27 @@ class TestFetchSuggestions:
         result = fetch_suggestions("test")
         assert result == []
 
+    @patch("src.suggest_api.requests.get")
+    def test_timeout_parameter(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = ["query", ["s1"]]
+        mock_resp.raise_for_status.return_value = None
+        mock_get.return_value = mock_resp
+
+        fetch_suggestions("test")
+        call_kwargs = mock_get.call_args
+        assert call_kwargs.kwargs.get("timeout") == 5
+
+    @patch("src.suggest_api.requests.get")
+    def test_json_parse_error(self, mock_get):
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status.return_value = None
+        mock_resp.json.side_effect = ValueError("Invalid JSON")
+        mock_get.return_value = mock_resp
+
+        result = fetch_suggestions("test")
+        assert result == []
+
 
 class TestFlattenUniqueSuggestions:
     def test_dedup(self):

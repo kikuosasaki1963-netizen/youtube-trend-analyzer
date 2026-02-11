@@ -2,12 +2,20 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime
+import logging
+from dataclasses import dataclass
 
 import streamlit as st
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+
+from src.session_keys import SessionKeys
+
+logger = logging.getLogger("youtube_analyzer")
+
+
+class QuotaExceededError(Exception):
+    """APIクォータ超過エラー."""
 
 
 @dataclass
@@ -46,9 +54,10 @@ class QuotaTracker:
 
 def get_quota_tracker() -> QuotaTracker:
     """セッション内のQuotaTrackerを取得・作成する."""
-    if "quota_tracker" not in st.session_state:
-        st.session_state.quota_tracker = QuotaTracker()
-    return st.session_state.quota_tracker
+    key = SessionKeys.QUOTA_TRACKER
+    if key not in st.session_state:
+        st.session_state[key] = QuotaTracker()
+    return st.session_state[key]
 
 
 def get_youtube_client(api_key: str):
@@ -86,11 +95,15 @@ def search_videos(
         params["publishedAfter"] = published_after
 
     try:
+        logger.info("search_videos: query=%r, max_results=%d (100 units)", query, max_results)
         response = youtube.search().list(**params).execute()
         tracker = get_quota_tracker()
         tracker.add(100)
-        return response.get("items", [])
+        items = response.get("items", [])
+        logger.info("search_videos: %d results returned", len(items))
+        return items
     except HttpError as e:
+        logger.error("search_videos: HttpError %s", e.resp.status)
         if e.resp.status == 403:
             raise QuotaExceededError("APIクォータを超過しました。明日リセットされます。") from e
         raise
@@ -107,6 +120,7 @@ def get_video_details(api_key: str, video_ids: tuple[str, ...]) -> dict[str, dic
     result: dict[str, dict] = {}
     tracker = get_quota_tracker()
 
+    logger.info("get_video_details: %d videos (1 unit/batch)", len(video_ids))
     for i in range(0, len(video_ids), 50):
         batch = video_ids[i : i + 50]
         try:
@@ -119,6 +133,7 @@ def get_video_details(api_key: str, video_ids: tuple[str, ...]) -> dict[str, dic
             for item in response.get("items", []):
                 result[item["id"]] = item["statistics"]
         except HttpError as e:
+            logger.error("get_video_details: HttpError %s", e.resp.status)
             if e.resp.status == 403:
                 raise QuotaExceededError(
                     "APIクォータを超過しました。明日リセットされます。"
@@ -141,6 +156,7 @@ def get_channel_details(
     result: dict[str, dict] = {}
     tracker = get_quota_tracker()
 
+    logger.info("get_channel_details: %d channels (1 unit/batch)", len(channel_ids))
     for i in range(0, len(channel_ids), 50):
         batch = channel_ids[i : i + 50]
         try:
@@ -153,6 +169,7 @@ def get_channel_details(
             for item in response.get("items", []):
                 result[item["id"]] = item["statistics"]
         except HttpError as e:
+            logger.error("get_channel_details: HttpError %s", e.resp.status)
             if e.resp.status == 403:
                 raise QuotaExceededError(
                     "APIクォータを超過しました。明日リセットされます。"
@@ -160,7 +177,3 @@ def get_channel_details(
             raise
 
     return result
-
-
-class QuotaExceededError(Exception):
-    """APIクォータ超過エラー."""

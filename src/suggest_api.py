@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import time
-import urllib.parse
+from typing import Callable
 
 import requests
-import streamlit as st
+
+logger = logging.getLogger("youtube_analyzer")
 
 SUGGEST_URL = "https://suggestqueries.google.com/complete/search"
 
@@ -36,9 +38,10 @@ def fetch_suggestions(query: str) -> list[str]:
         resp.raise_for_status()
         data = resp.json()
         if isinstance(data, list) and len(data) >= 2:
+            logger.info("fetch_suggestions: query=%r → %d results", query, len(data[1]))
             return data[1]
-    except (requests.RequestException, ValueError):
-        pass
+    except (requests.RequestException, ValueError) as e:
+        logger.warning("fetch_suggestions: query=%r failed: %s", query, e)
     return []
 
 
@@ -46,7 +49,7 @@ def fetch_suggestions_with_alphabet_soup(
     base_query: str,
     suffixes: list[str] | None = None,
     delay: float = 1.5,
-    progress_callback=None,
+    progress_callback: Callable[[int, int], None] | None = None,
 ) -> dict[str, list[str]]:
     """アルファベットスープ法で網羅的にサジェストを取得する.
 
@@ -65,6 +68,7 @@ def fetch_suggestions_with_alphabet_soup(
     results: dict[str, list[str]] = {}
     total = len(suffixes)
 
+    logger.info("alphabet_soup: base=%r, %d suffixes, delay=%.1fs", base_query, total, delay)
     for i, suffix in enumerate(suffixes):
         q = f"{base_query} {suffix}"
         results[suffix] = fetch_suggestions(q)
@@ -73,6 +77,8 @@ def fetch_suggestions_with_alphabet_soup(
         if i < total - 1:
             time.sleep(delay)
 
+    total_suggestions = sum(len(v) for v in results.values())
+    logger.info("alphabet_soup: completed, %d total suggestions", total_suggestions)
     return results
 
 

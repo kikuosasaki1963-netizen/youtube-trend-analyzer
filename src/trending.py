@@ -102,7 +102,7 @@ def flatten_category_videos(
 ) -> list[dict]:
     """カテゴリ別動画を1つのリストに統合する（重複排除）."""
     seen_ids: set[str] = set()
-    all_videos: list[str] = []
+    all_videos: list[dict] = []
     for videos in category_videos.values():
         for v in videos:
             vid = v.get("id", "")
