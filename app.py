@@ -555,8 +555,8 @@ with tab_trends:
     st.caption("Google Trends のデータから、今注目されている検索キーワードを確認できます。APIクォータ消費なし。")
 
     # ── セクション1: 今日の急上昇ワード（キーワード不要） ──
-    st.markdown("### 今日の急上昇検索ワード（日本）")
-    st.caption("Google検索で今日急上昇しているキーワード TOP20。キーワード指定不要で取得できます。")
+    st.markdown("### 急上昇検索ワード（日本・過去7日間）")
+    st.caption("Google検索で直近7日間に急上昇したキーワード一覧。キーワード指定不要で取得できます。")
 
     if st.button("急上昇ワードを取得", use_container_width=True, key="trending_searches_btn"):
         try:
