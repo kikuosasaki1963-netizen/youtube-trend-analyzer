@@ -17,6 +17,12 @@ from src.suggest_api import (
     flatten_unique_suggestions,
 )
 from src.trends_api import get_interest_over_time, get_related_queries
+from src.trending import (
+    fetch_trending_videos,
+    extract_keywords_from_titles,
+    analyze_trending_categories,
+    trending_to_dataframe,
+)
 from src.utils import format_number, video_url
 from src.youtube_api import QuotaExceededError, get_quota_tracker
 
@@ -101,7 +107,86 @@ with st.sidebar:
     st.caption(f"残り約 {tracker.remaining:,} ユニット")
 
 # ─── メインコンテンツ（タブ） ─────────────────────────
-tab_suggest, tab_buzz, tab_trends = st.tabs(["サジェストキーワード", "バズ動画分析", "トレンド調査"])
+tab_hot, tab_suggest, tab_buzz, tab_trends = st.tabs(["急上昇トレンド", "サジェストキーワード", "バズ動画分析", "トレンド調査"])
+
+# ─── タブ0: 急上昇トレンド ────────────────────────────
+with tab_hot:
+    st.subheader("YouTube 急上昇トレンド（日本）")
+    st.caption("今YouTube日本で何がバズっているかを一目で把握できます。クォータ消費: 1ユニット/回")
+
+    if st.button("急上昇データ取得", type="primary", use_container_width=True):
+        try:
+            with st.spinner("急上昇動画を取得中..."):
+                trending_videos = fetch_trending_videos(api_key)
+
+            st.session_state["trending_videos"] = trending_videos
+        except QuotaExceededError:
+            st.warning("APIクォータを超過しました。")
+
+    if "trending_videos" in st.session_state and st.session_state["trending_videos"]:
+        trending_videos = st.session_state["trending_videos"]
+        st.success(f"{len(trending_videos)} 件の急上昇動画を取得しました")
+
+        # バズキーワードランキング
+        st.markdown("### バズキーワード TOP30")
+        st.caption("急上昇動画のタイトルから頻出ワードを抽出")
+        keywords = extract_keywords_from_titles(trending_videos)
+        if keywords:
+            kw_df = pd.DataFrame(keywords, columns=["キーワード", "出現回数"])
+            col_chart, col_table = st.columns([2, 1])
+            with col_chart:
+                st.bar_chart(kw_df.set_index("キーワード"), horizontal=True, height=600)
+            with col_table:
+                st.dataframe(kw_df, use_container_width=True, height=600)
+
+        # カテゴリ分布
+        st.markdown("### カテゴリ分布")
+        cat_df = analyze_trending_categories(trending_videos)
+        if not cat_df.empty:
+            col_pie, col_cat_table = st.columns([2, 1])
+            with col_pie:
+                st.bar_chart(cat_df.set_index("カテゴリ"), height=400)
+            with col_cat_table:
+                st.dataframe(cat_df, use_container_width=True)
+
+        # 急上昇動画サムネイル一覧
+        st.markdown("### 急上昇動画一覧")
+        cols_per_row = 3
+        for i in range(0, min(len(trending_videos), 15), cols_per_row):
+            cols = st.columns(cols_per_row)
+            for j, col in enumerate(cols):
+                idx = i + j
+                if idx >= len(trending_videos):
+                    break
+                v = trending_videos[idx]
+                snippet = v.get("snippet", {})
+                stats = v.get("statistics", {})
+                thumbnails = snippet.get("thumbnails", {})
+                thumb_url = (
+                    thumbnails.get("high", {}).get("url")
+                    or thumbnails.get("medium", {}).get("url")
+                    or thumbnails.get("default", {}).get("url", "")
+                )
+                with col:
+                    with st.container(border=True):
+                        st.image(thumb_url, use_container_width=True)
+                        vid_url = f"https://www.youtube.com/watch?v={v['id']}"
+                        st.markdown(f"**[{snippet.get('title', '')}]({vid_url})**")
+                        st.caption(f"{snippet.get('channelTitle', '')} / {format_number(int(stats.get('viewCount', 0)))}回再生")
+
+        # データテーブル＆CSVダウンロード
+        st.divider()
+        df_trending = trending_to_dataframe(trending_videos)
+        st.dataframe(df_trending, use_container_width=True, height=400)
+
+        csv_trending = df_trending.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            "CSVダウンロード",
+            csv_trending,
+            file_name="youtube_trending_jp.csv",
+            mime="text/csv",
+            key="trending_csv",
+        )
 
 # ─── タブ1: サジェストキーワード ──────────────────────
 with tab_suggest:
