@@ -19,6 +19,8 @@ from src.suggest_api import (
 from src.trends_api import get_interest_over_time, get_related_queries
 from src.trending import (
     fetch_trending_videos,
+    fetch_trending_all_categories,
+    flatten_category_videos,
     extract_keywords_from_titles,
     analyze_trending_categories,
     trending_to_dataframe,
@@ -114,12 +116,14 @@ with tab_hot:
     st.subheader("YouTube 急上昇トレンド（日本）")
     st.caption("今YouTube日本で何がバズっているかを一目で把握できます。クォータ消費: 1ユニット/回")
 
-    if st.button("急上昇データ取得", type="primary", use_container_width=True):
+    if st.button("急上昇データ取得（全カテゴリ）", type="primary", use_container_width=True):
         try:
-            with st.spinner("急上昇動画を取得中..."):
-                trending_videos = fetch_trending_videos(api_key)
+            with st.spinner("全カテゴリの急上昇動画を取得中（約15ユニット消費）..."):
+                category_videos = fetch_trending_all_categories(api_key)
+                all_videos = flatten_category_videos(category_videos)
 
-            st.session_state["trending_videos"] = trending_videos
+            st.session_state["trending_videos"] = all_videos
+            st.session_state["trending_by_category"] = category_videos
         except QuotaExceededError:
             st.warning("APIクォータを超過しました。")
 

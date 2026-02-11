@@ -59,10 +59,57 @@ def fetch_trending_videos(
     if category_id != "0":
         params["videoCategoryId"] = category_id
 
-    response = youtube.videos().list(**params).execute()
-    tracker = get_quota_tracker()
-    tracker.add(1)
-    return response.get("items", [])
+    try:
+        response = youtube.videos().list(**params).execute()
+        tracker = get_quota_tracker()
+        tracker.add(1)
+        return response.get("items", [])
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_trending_all_categories(
+    api_key: str,
+    region_code: str = "JP",
+    max_per_category: int = 10,
+) -> dict[str, list[dict]]:
+    """全カテゴリの急上昇動画をまとめて取得する.
+
+    Args:
+        api_key: YouTube API キー
+        region_code: 地域コード
+        max_per_category: カテゴリあたりの最大取得件数
+
+    Returns:
+        {カテゴリ名: [動画リスト]} の辞書
+    """
+    results: dict[str, list[dict]] = {}
+    for cat_id, cat_name in CATEGORY_MAP.items():
+        videos = fetch_trending_videos(
+            api_key,
+            region_code=region_code,
+            max_results=max_per_category,
+            category_id=cat_id,
+        )
+        if videos:
+            results[cat_name] = videos
+    return results
+
+
+def flatten_category_videos(
+    category_videos: dict[str, list[dict]],
+) -> list[dict]:
+    """カテゴリ別動画を1つのリストに統合する（重複排除）."""
+    seen_ids: set[str] = set()
+    all_videos: list[str] = []
+    for videos in category_videos.values():
+        for v in videos:
+            vid = v.get("id", "")
+            if vid not in seen_ids:
+                seen_ids.add(vid)
+                all_videos.append(v)
+    return all_videos
 
 
 def extract_keywords_from_titles(videos: list[dict], top_n: int = 30) -> list[tuple[str, int]]:
