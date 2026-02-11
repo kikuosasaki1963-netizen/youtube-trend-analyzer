@@ -1,25 +1,41 @@
-"""Google Trends APIクライアント（pytrends）."""
+"""Google Trends APIクライアント（pytrends + RSS）."""
 
 from __future__ import annotations
 
+import xml.etree.ElementTree as ET
+
 import pandas as pd
+import requests
 from pytrends.request import TrendReq
 
 
-def get_trending_searches(geo: str = "japan") -> pd.DataFrame:
-    """今日の急上昇キーワードを取得する（キーワード指定不要）.
+def get_trending_searches(geo: str = "JP") -> pd.DataFrame:
+    """今日の急上昇キーワードを取得する（Google Trends RSSから）.
 
     Args:
-        geo: 地域名（"japan", "united_states" 等）
+        geo: 地域コード（"JP", "US" 等）
 
     Returns:
-        急上昇キーワードのDataFrame
+        急上昇キーワードのDataFrame（順位・キーワード）
     """
-    pytrends = TrendReq(hl="ja-JP", tz=540)
-    df = pytrends.trending_searches(pn=geo)
-    df.columns = ["キーワード"]
-    df.index = range(1, len(df) + 1)
-    df.index.name = "順位"
+    url = f"https://trends.google.com/trending/rss?geo={geo}"
+    resp = requests.get(url, timeout=15)
+    resp.raise_for_status()
+
+    root = ET.fromstring(resp.content)
+    ns = {"ht": "https://trends.google.com/trending/rss"}
+
+    keywords = []
+    for item in root.iter("item"):
+        title = item.findtext("title", "")
+        traffic = item.findtext("ht:approx_traffic", "", ns)
+        if title:
+            keywords.append({"キーワード": title, "検索ボリューム": traffic})
+
+    df = pd.DataFrame(keywords)
+    if not df.empty:
+        df.index = range(1, len(df) + 1)
+        df.index.name = "順位"
     return df
 
 
