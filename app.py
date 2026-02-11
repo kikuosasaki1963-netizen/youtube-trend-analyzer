@@ -16,7 +16,11 @@ from src.suggest_api import (
     fetch_suggestions_with_alphabet_soup,
     flatten_unique_suggestions,
 )
-from src.trends_api import get_interest_over_time, get_related_queries
+from src.trends_api import (
+    get_trending_searches,
+    get_interest_over_time,
+    get_related_queries,
+)
 from src.trending import (
     CATEGORY_MAP,
     fetch_trending_videos,
@@ -548,7 +552,41 @@ with tab_buzz:
 # ─── タブ3: トレンド調査 ─────────────────────────────
 with tab_trends:
     st.subheader("トレンド調査")
-    st.caption("Google Trends のデータから、キーワードの検索ボリューム推移と関連キーワードを表示します。APIクォータ消費なし。")
+    st.caption("Google Trends のデータから、今注目されている検索キーワードを確認できます。APIクォータ消費なし。")
+
+    # ── セクション1: 今日の急上昇ワード（キーワード不要） ──
+    st.markdown("### 今日の急上昇検索ワード（日本）")
+    st.caption("Google検索で今日急上昇しているキーワード TOP20。キーワード指定不要で取得できます。")
+
+    if st.button("急上昇ワードを取得", use_container_width=True, key="trending_searches_btn"):
+        try:
+            with st.spinner("Google Trends 急上昇ワードを取得中..."):
+                trending_df = get_trending_searches(geo="japan")
+            st.session_state["trending_searches"] = trending_df
+        except Exception as e:
+            st.error(f"取得に失敗しました: {e}")
+
+    if "trending_searches" in st.session_state:
+        trending_df = st.session_state["trending_searches"]
+        if not trending_df.empty:
+            st.success(f"{len(trending_df)} 件の急上昇ワードを取得")
+            st.dataframe(trending_df, use_container_width=True, height=500)
+
+            csv_trending_kw = trending_df.to_csv().encode("utf-8-sig")
+            st.download_button(
+                "CSVダウンロード",
+                csv_trending_kw,
+                file_name="google_trending_searches_jp.csv",
+                mime="text/csv",
+                key="trending_searches_csv",
+            )
+        else:
+            st.info("急上昇ワードが取得できませんでした。")
+
+    # ── セクション2: キーワード別の検索ボリューム調査 ──
+    st.divider()
+    st.markdown("### キーワード別 検索ボリューム調査")
+    st.caption("特定キーワードの検索ボリューム推移と関連キーワードを表示します。")
 
     trend_period = st.selectbox(
         "調査期間",

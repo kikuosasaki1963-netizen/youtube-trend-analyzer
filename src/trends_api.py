@@ -6,6 +6,23 @@ import pandas as pd
 from pytrends.request import TrendReq
 
 
+def get_trending_searches(geo: str = "japan") -> pd.DataFrame:
+    """今日の急上昇キーワードを取得する（キーワード指定不要）.
+
+    Args:
+        geo: 地域名（"japan", "united_states" 等）
+
+    Returns:
+        急上昇キーワードのDataFrame
+    """
+    pytrends = TrendReq(hl="ja-JP", tz=540)
+    df = pytrends.trending_searches(pn=geo)
+    df.columns = ["キーワード"]
+    df.index = range(1, len(df) + 1)
+    df.index.name = "順位"
+    return df
+
+
 def get_interest_over_time(
     keyword: str,
     timeframe: str = "today 12-m",
