@@ -201,7 +201,7 @@ with tab_hot:
 # ─── タブ: ジャンル別ランキング ──────────────────────
 with tab_genre:
     st.subheader("ジャンル別 人気キーワードランキング")
-    st.caption("指定ジャンル・期間で再生数の多い動画からバズキーワードを抽出します。（102ユニット/回）")
+    st.caption("指定ジャンル・期間で再生数の多い動画からバズキーワードを抽出します。キーワード検索: 102ユニット / キーワードなし: 1ユニット")
 
     _genre_map = {"全ジャンル": "0"}
     _genre_map.update({v: k for k, v in CATEGORY_MAP.items()})
@@ -231,37 +231,33 @@ with tab_genre:
 
     if st.button("ランキング取得", type="primary", use_container_width=True, key="genre_btn"):
         days = genre_period_options[selected_period]
-        dt = datetime.utcnow() - timedelta(days=days)
-        published_after = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
         category_id = _genre_map[selected_genre]
+        has_keyword = bool(genre_keyword.strip())
 
         try:
-            with st.spinner(f"「{selected_genre}」の人気動画を検索中..."):
-                youtube = get_youtube_client(api_key)
+            if has_keyword:
+                # キーワードあり → search.list（100ユニット）
+                with st.spinner(f"「{genre_keyword.strip()}」× {selected_genre} を検索中..."):
+                    dt = datetime.utcnow() - timedelta(days=days)
+                    published_after = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+                    youtube = get_youtube_client(api_key)
 
-                params = {
-                    "part": "snippet",
-                    "type": "video",
-                    "maxResults": 50,
-                    "order": "viewCount",
-                    "regionCode": "JP",
-                    "publishedAfter": published_after,
-                }
-                if genre_keyword.strip():
-                    params["q"] = genre_keyword.strip()
-                if category_id != "0":
-                    params["videoCategoryId"] = category_id
+                    params = {
+                        "part": "snippet",
+                        "type": "video",
+                        "q": genre_keyword.strip(),
+                        "maxResults": 50,
+                        "order": "viewCount",
+                        "regionCode": "JP",
+                        "publishedAfter": published_after,
+                    }
+                    if category_id != "0":
+                        params["videoCategoryId"] = category_id
 
-                response = youtube.search().list(**params).execute()
-                tracker.add(100)
+                    response = youtube.search().list(**params).execute()
+                    tracker.add(100)
+                    items = response.get("items", [])
 
-                items = response.get("items", [])
-
-                if not items:
-                    st.session_state["genre_videos"] = []
-                    st.session_state["genre_label"] = f"{selected_genre}（{selected_period}）"
-                    st.warning("該当する動画が見つかりませんでした。条件を変えてお試しください。")
-                else:
                     # video details で再生数取得
                     video_ids = tuple(
                         item["id"]["videoId"]
@@ -270,7 +266,6 @@ with tab_genre:
                     )
                     video_stats = get_video_details(api_key, video_ids) if video_ids else {}
 
-                    # VideoInfoライクな構造に変換
                     genre_videos = []
                     for item in items:
                         vid = item.get("id", {}).get("videoId", "")
@@ -291,10 +286,51 @@ with tab_genre:
                             "thumbnail_url": thumb_url,
                             "view_count": int(stats.get("viewCount", 0)),
                         })
+            else:
+                # キーワードなし → videos.list mostPopular（1ユニット/カテゴリ）
+                with st.spinner(f"「{selected_genre}」の人気動画を取得中..."):
+                    if category_id == "0":
+                        # 全ジャンル: カテゴリごとに取得
+                        all_items = []
+                        for cat_id in CATEGORY_MAP:
+                            vids = fetch_trending_videos(
+                                api_key, category_id=cat_id, max_results=50,
+                            )
+                            all_items.extend(vids)
+                    else:
+                        all_items = fetch_trending_videos(
+                            api_key, category_id=category_id, max_results=50,
+                        )
 
-                    genre_videos.sort(key=lambda x: x["view_count"], reverse=True)
-                    st.session_state["genre_videos"] = genre_videos
-                    st.session_state["genre_label"] = f"{selected_genre}（{selected_period}）"
+                    genre_videos = []
+                    seen_ids = set()
+                    for v in all_items:
+                        vid = v.get("id", "")
+                        if vid in seen_ids:
+                            continue
+                        seen_ids.add(vid)
+                        snippet = v.get("snippet", {})
+                        stats = v.get("statistics", {})
+                        thumbnails = snippet.get("thumbnails", {})
+                        thumb_url = (
+                            thumbnails.get("high", {}).get("url")
+                            or thumbnails.get("medium", {}).get("url")
+                            or thumbnails.get("default", {}).get("url", "")
+                        )
+                        genre_videos.append({
+                            "id": vid,
+                            "snippet": snippet,
+                            "statistics": stats,
+                            "thumbnail_url": thumb_url,
+                            "view_count": int(stats.get("viewCount", 0)),
+                        })
+
+            genre_videos.sort(key=lambda x: x["view_count"], reverse=True)
+            st.session_state["genre_videos"] = genre_videos
+            st.session_state["genre_label"] = f"{selected_genre}（{selected_period}）"
+
+            if not genre_videos:
+                st.warning("該当する動画が見つかりませんでした。条件を変えてお試しください。")
 
         except QuotaExceededError:
             st.warning("APIクォータを超過しました。")
