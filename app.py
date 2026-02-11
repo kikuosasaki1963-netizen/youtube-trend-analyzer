@@ -220,16 +220,9 @@ with tab_genre:
 
         try:
             with st.spinner(f"「{selected_genre}」の人気動画を検索中..."):
-                from src.youtube_api import search_videos, get_video_details
+                from src.youtube_api import get_youtube_client, get_video_details
 
-                # search.list で再生数順に取得
-                search_params = {
-                    "api_key": api_key,
-                    "query": "",
-                    "max_results": 50,
-                    "published_after": published_after,
-                }
-                youtube = __import__("src.youtube_api", fromlist=["get_youtube_client"]).get_youtube_client(api_key)
+                youtube = get_youtube_client(api_key)
 
                 params = {
                     "part": "snippet",
@@ -243,13 +236,16 @@ with tab_genre:
                     params["videoCategoryId"] = category_id
 
                 response = youtube.search().list(**params).execute()
-                from src.youtube_api import get_quota_tracker as _gqt
-                _gqt().add(100)
+                tracker.add(100)
 
                 items = response.get("items", [])
 
                 # video details で再生数取得
-                video_ids = tuple(item["id"]["videoId"] for item in items if "videoId" in item.get("id", {}))
+                video_ids = tuple(
+                    item["id"]["videoId"]
+                    for item in items
+                    if item.get("id", {}).get("videoId")
+                )
                 video_stats = get_video_details(api_key, video_ids) if video_ids else {}
 
                 # VideoInfoライクな構造に変換
@@ -280,6 +276,8 @@ with tab_genre:
 
         except QuotaExceededError:
             st.warning("APIクォータを超過しました。")
+        except Exception as e:
+            st.error(f"エラーが発生しました: {e}")
 
     if "genre_videos" in st.session_state and st.session_state["genre_videos"]:
         genre_videos = st.session_state["genre_videos"]
