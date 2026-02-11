@@ -18,6 +18,7 @@ from src.suggest_api import (
 )
 from src.trends_api import get_interest_over_time, get_related_queries
 from src.trending import (
+    CATEGORY_MAP,
     fetch_trending_videos,
     fetch_trending_all_categories,
     flatten_category_videos,
