@@ -561,7 +561,7 @@ with tab_trends:
     if st.button("急上昇ワードを取得", use_container_width=True, key="trending_searches_btn"):
         try:
             with st.spinner("Google Trends 急上昇ワードを取得中..."):
-                trending_df = get_trending_searches(geo="japan")
+                trending_df = get_trending_searches(geo="JP")
             st.session_state["trending_searches"] = trending_df
         except Exception as e:
             st.error(f"取得に失敗しました: {e}")
