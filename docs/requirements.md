@@ -68,9 +68,36 @@
 - API呼び出しのログ出力
 - デバッグ・障害追跡の容易化
 
-## 4. 型定義（既存）
+## 4. 型定義（実装済み）
+
+→ 詳細は「5. 型設計」セクション参照
+
+## 5. 型設計（リファクタリングで追加・整備）
+
+### 新規追加型
 
 ```python
+# src/session_keys.py
+class SessionKeys:
+    """セッションステート管理キーの定数クラス."""
+    QUOTA_TRACKER: str
+    TRENDING_VIDEOS: str
+    TRENDING_BY_CATEGORY: str
+    GENRE_VIDEOS: str
+    GENRE_LABEL: str
+    ANALYZED_VIDEOS: str
+    BASE_SUGGESTIONS: str
+    ALL_SUGGESTIONS: str
+    TRENDING_SEARCHES: str
+    TREND_INTEREST: str
+    TREND_RELATED: str
+    TREND_KEYWORD: str
+```
+
+### 既存型の整備
+
+```python
+# src/youtube_api.py - 変更なし（既存のまま）
 @dataclass
 class VideoInfo:
     video_id: str
@@ -91,7 +118,36 @@ class QuotaTracker:
 class QuotaExceededError(Exception): ...
 ```
 
-## 5. 設計判断
+### 関数シグネチャの型ヒント追加
+
+```python
+# src/analyzer.py - 内部関数の型明示化
+def _extract_search_info(
+    search_results: list[dict],
+) -> tuple[list[VideoInfo], list[str], set[str]]: ...
+
+def _calculate_vs_ratios(
+    videos: list[VideoInfo],
+    video_stats: dict[str, dict],
+    channel_stats: dict[str, dict],
+) -> None: ...
+
+# src/suggest_api.py - コールバック型明示化
+progress_callback: Callable[[int, int], None] | None = None
+
+# src/constants.py - 定数辞書の型明示化
+PERIOD_OPTIONS: dict[str, Optional[int]]
+GENRE_PERIOD_OPTIONS: dict[str, int]
+TREND_PERIOD_MAP: dict[str, str]
+```
+
+### Python 3.9 互換性注記
+
+- `from __future__ import annotations` を全モジュールで使用
+- ランタイム型（定数の型注釈等）には `Optional[X]` を使用（`X | None` は3.10+）
+- 文字列アノテーション内では `X | None` 使用可
+
+## 6. 設計判断
 
 ### app.py をタブごとに分離する理由
 - 688行の単一ファイルは保守性が低い
