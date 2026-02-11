@@ -26,7 +26,12 @@ from src.trending import (
     trending_to_dataframe,
 )
 from src.utils import format_number, video_url
-from src.youtube_api import QuotaExceededError, get_quota_tracker
+from src.youtube_api import (
+    QuotaExceededError,
+    get_quota_tracker,
+    get_youtube_client,
+    get_video_details,
+)
 
 # ─── ページ設定 ───────────────────────────────────────
 st.set_page_config(
@@ -197,12 +202,14 @@ with tab_genre:
     st.subheader("ジャンル別 人気キーワードランキング")
     st.caption("指定ジャンル・期間で再生数の多い動画からバズキーワードを抽出します。（102ユニット/回）")
 
-    from src.trending import CATEGORY_MAP, extract_keywords_from_titles
+    _genre_map = {"全ジャンル": "0"}
+    _genre_map.update({v: k for k, v in CATEGORY_MAP.items()})
 
     genre_col1, genre_col2 = st.columns(2)
     with genre_col1:
-        genre_options = {"全ジャンル": "0"} | {v: k for k, v in CATEGORY_MAP.items()}
-        selected_genre = st.selectbox("ジャンル", options=list(genre_options.keys()), key="genre_select")
+        selected_genre = st.selectbox(
+            "ジャンル", options=list(_genre_map.keys()), key="genre_select",
+        )
     with genre_col2:
         genre_period_options = {
             "過去7日": 7,
@@ -210,18 +217,25 @@ with tab_genre:
             "過去90日": 90,
             "過去1年": 365,
         }
-        selected_period = st.selectbox("期間", options=list(genre_period_options.keys()), key="genre_period")
+        selected_period = st.selectbox(
+            "期間", options=list(genre_period_options.keys()), key="genre_period",
+        )
+
+    genre_keyword = st.text_input(
+        "検索キーワード（任意）",
+        value=search_query,
+        key="genre_keyword",
+        help="空欄の場合はジャンル全体のランキングを取得します",
+    )
 
     if st.button("ランキング取得", type="primary", use_container_width=True, key="genre_btn"):
         days = genre_period_options[selected_period]
         dt = datetime.utcnow() - timedelta(days=days)
         published_after = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
-        category_id = genre_options[selected_genre]
+        category_id = _genre_map[selected_genre]
 
         try:
             with st.spinner(f"「{selected_genre}」の人気動画を検索中..."):
-                from src.youtube_api import get_youtube_client, get_video_details
-
                 youtube = get_youtube_client(api_key)
 
                 params = {
@@ -232,6 +246,8 @@ with tab_genre:
                     "regionCode": "JP",
                     "publishedAfter": published_after,
                 }
+                if genre_keyword.strip():
+                    params["q"] = genre_keyword.strip()
                 if category_id != "0":
                     params["videoCategoryId"] = category_id
 
@@ -240,44 +256,49 @@ with tab_genre:
 
                 items = response.get("items", [])
 
-                # video details で再生数取得
-                video_ids = tuple(
-                    item["id"]["videoId"]
-                    for item in items
-                    if item.get("id", {}).get("videoId")
-                )
-                video_stats = get_video_details(api_key, video_ids) if video_ids else {}
-
-                # VideoInfoライクな構造に変換
-                genre_videos = []
-                for item in items:
-                    vid = item.get("id", {}).get("videoId", "")
-                    if not vid:
-                        continue
-                    snippet = item["snippet"]
-                    stats = video_stats.get(vid, {})
-                    thumbnails = snippet.get("thumbnails", {})
-                    thumb_url = (
-                        thumbnails.get("high", {}).get("url")
-                        or thumbnails.get("medium", {}).get("url")
-                        or thumbnails.get("default", {}).get("url", "")
+                if not items:
+                    st.session_state["genre_videos"] = []
+                    st.session_state["genre_label"] = f"{selected_genre}（{selected_period}）"
+                    st.warning("該当する動画が見つかりませんでした。条件を変えてお試しください。")
+                else:
+                    # video details で再生数取得
+                    video_ids = tuple(
+                        item["id"]["videoId"]
+                        for item in items
+                        if item.get("id", {}).get("videoId")
                     )
-                    genre_videos.append({
-                        "id": vid,
-                        "snippet": snippet,
-                        "statistics": stats,
-                        "thumbnail_url": thumb_url,
-                        "view_count": int(stats.get("viewCount", 0)),
-                    })
+                    video_stats = get_video_details(api_key, video_ids) if video_ids else {}
 
-                genre_videos.sort(key=lambda x: x["view_count"], reverse=True)
-                st.session_state["genre_videos"] = genre_videos
-                st.session_state["genre_label"] = f"{selected_genre}（{selected_period}）"
+                    # VideoInfoライクな構造に変換
+                    genre_videos = []
+                    for item in items:
+                        vid = item.get("id", {}).get("videoId", "")
+                        if not vid:
+                            continue
+                        snippet = item["snippet"]
+                        stats = video_stats.get(vid, {})
+                        thumbnails = snippet.get("thumbnails", {})
+                        thumb_url = (
+                            thumbnails.get("high", {}).get("url")
+                            or thumbnails.get("medium", {}).get("url")
+                            or thumbnails.get("default", {}).get("url", "")
+                        )
+                        genre_videos.append({
+                            "id": vid,
+                            "snippet": snippet,
+                            "statistics": stats,
+                            "thumbnail_url": thumb_url,
+                            "view_count": int(stats.get("viewCount", 0)),
+                        })
+
+                    genre_videos.sort(key=lambda x: x["view_count"], reverse=True)
+                    st.session_state["genre_videos"] = genre_videos
+                    st.session_state["genre_label"] = f"{selected_genre}（{selected_period}）"
 
         except QuotaExceededError:
             st.warning("APIクォータを超過しました。")
         except Exception as e:
-            st.error(f"エラーが発生しました: {e}")
+            st.error(f"エラーが発生しました: {type(e).__name__}: {e}")
 
     if "genre_videos" in st.session_state and st.session_state["genre_videos"]:
         genre_videos = st.session_state["genre_videos"]
