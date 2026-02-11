@@ -29,16 +29,23 @@ st.set_page_config(
 st.title("YouTube トレンド＆競合分析ツール")
 
 # ─── APIキーチェック ──────────────────────────────────
-api_key = st.secrets.get("YOUTUBE_API_KEY", "")
+try:
+    api_key = st.secrets["YOUTUBE_API_KEY"]
+except (KeyError, FileNotFoundError):
+    api_key = ""
+
 if not api_key:
     st.error(
         "YouTube API キーが未設定です。\n\n"
-        "**セットアップ手順:**\n"
+        "**ローカル環境の場合:**\n"
+        "`.streamlit/secrets.toml` に以下を追加:\n"
+        '```\nYOUTUBE_API_KEY = "YOUR_API_KEY"\n```\n\n'
+        "**Streamlit Community Cloud の場合:**\n"
+        "アプリ設定 → Secrets に上記と同じ内容を入力\n\n"
+        "**APIキー取得手順:**\n"
         "1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクト作成\n"
         "2. YouTube Data API v3 を有効化\n"
-        "3. APIキーを作成\n"
-        "4. `.streamlit/secrets.toml` に以下を追加:\n"
-        '```\nYOUTUBE_API_KEY = "YOUR_API_KEY"\n```'
+        "3. APIキーを作成"
     )
     st.stop()
 
