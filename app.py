@@ -4,7 +4,7 @@ import streamlit as st
 
 from src.constants import DEFAULT_SEARCH_QUERY, PERIOD_OPTIONS
 from src.logger import setup_logger
-from src.tabs import tab_trending, tab_genre, tab_suggest, tab_buzz, tab_trends, tab_google_ranking
+from src.tabs import tab_trending, tab_genre, tab_suggest, tab_buzz, tab_trends, tab_google_ranking, tab_sns_buzz
 from src.youtube_api import get_quota_tracker
 
 setup_logger()
@@ -73,8 +73,8 @@ with st.sidebar:
     st.caption(f"残り約 {tracker.remaining:,} ユニット")
 
 # ─── メインコンテンツ（タブ） ─────────────────────────
-tab_hot, tab_gen, tab_sug, tab_buz, tab_trd, tab_goo = st.tabs(
-    ["急上昇トレンド", "ジャンル別ランキング", "サジェストキーワード", "バズ動画分析", "トレンド調査", "Google検索ランキング"]
+tab_hot, tab_gen, tab_sug, tab_buz, tab_trd, tab_goo, tab_sns = st.tabs(
+    ["急上昇トレンド", "ジャンル別ランキング", "サジェストキーワード", "バズ動画分析", "トレンド調査", "Google検索ランキング", "SNSバズニュース"]
 )
 
 with tab_hot:
@@ -94,3 +94,6 @@ with tab_trd:
 
 with tab_goo:
     tab_google_ranking.render()
+
+with tab_sns:
+    tab_sns_buzz.render()

@@ -19,3 +19,6 @@ class SessionKeys:
     GOOGLE_RANKING_QUERIES = "google_ranking_queries"
     GOOGLE_RANKING_TOPICS = "google_ranking_topics"
     GOOGLE_RANKING_CATEGORY = "google_ranking_category"
+    SNS_BUZZ_HATENA = "sns_buzz_hatena"
+    SNS_BUZZ_HATENA_CATEGORY = "sns_buzz_hatena_category"
+    SNS_BUZZ_TRENDING = "sns_buzz_trending"

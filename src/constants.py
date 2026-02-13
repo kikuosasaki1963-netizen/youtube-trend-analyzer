@@ -67,3 +67,16 @@ GOOGLE_TRENDS_TIMEFRAMES: dict[str, str] = {
     "過去12ヶ月": "today 12-m",
     "過去3ヶ月": "today 3-m",
 }
+
+# ─── はてなブックマーク カテゴリ ──────────────────────
+HATENA_CATEGORIES: dict[str, str] = {
+    "総合": "",
+    "テクノロジー": "it",
+    "社会": "social",
+    "政治と経済": "economics",
+    "暮らし": "life",
+    "エンタメ": "entertainment",
+    "ゲーム": "game",
+    "おもしろ": "fun",
+    "学び": "knowledge",
+}
