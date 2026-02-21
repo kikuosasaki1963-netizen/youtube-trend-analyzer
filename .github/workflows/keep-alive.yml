@@ -1,0 +1,40 @@
+name: Keep Streamlit Alive
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  keep-alive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Playwright
+        run: npx playwright install chromium --with-deps
+
+      - name: Visit Streamlit App
+        run: |
+          node -e "
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch();
+            const page = await browser.newPage();
+            console.log('Navigating to Streamlit app...');
+            await page.goto('https://ghvp7b95h3oazq45te3byl.streamlit.app/', {
+              waitUntil: 'networkidle',
+              timeout: 120000,
+            });
+            console.log('Waiting for app to fully load...');
+            await page.waitForTimeout(30000);
+            const title = await page.title();
+            console.log('Page title:', title);
+            await browser.close();
+            console.log('Done! App is awake.');
+          })();
+          "
