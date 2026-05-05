@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from src.trends_api import (
+    TrendsRateLimitError,
     get_trending_searches,
     get_interest_over_time,
     get_related_queries,
@@ -194,3 +195,51 @@ class TestGetRelatedTopics:
         result = get_related_topics("存在しないキーワード")
         assert result["rising"].empty
         assert result["top"].empty
+
+
+# ─── レート制限（429）ハンドリング ──────────────────────
+
+class TestRateLimitHandling:
+    """429エラー時にTrendsRateLimitErrorに変換されることを保証する."""
+
+    @patch("src.trends_api._fetch_interest_over_time")
+    def test_interest_over_time_converts_pytrends_429(self, mock_fetch):
+        from pytrends.exceptions import TooManyRequestsError
+        resp = MagicMock(status_code=429)
+        mock_fetch.side_effect = TooManyRequestsError("429", response=resp)
+
+        with pytest.raises(TrendsRateLimitError):
+            get_interest_over_time("テスト")
+
+    @patch("src.trends_api._fetch_interest_over_time")
+    def test_interest_over_time_converts_http_429(self, mock_fetch):
+        import requests as _req
+        resp = MagicMock()
+        resp.status_code = 429
+        err = _req.HTTPError("429 Too Many Requests")
+        err.response = resp
+        mock_fetch.side_effect = err
+
+        with pytest.raises(TrendsRateLimitError):
+            get_interest_over_time("テスト")
+
+    @patch("src.trends_api._fetch_interest_over_time")
+    def test_interest_over_time_passes_through_non_429_http(self, mock_fetch):
+        import requests as _req
+        resp = MagicMock()
+        resp.status_code = 500
+        err = _req.HTTPError("500 Server Error")
+        err.response = resp
+        mock_fetch.side_effect = err
+
+        with pytest.raises(_req.HTTPError):
+            get_interest_over_time("テスト")
+
+    @patch("src.trends_api._fetch_related_queries")
+    def test_related_queries_converts_429(self, mock_fetch):
+        from pytrends.exceptions import TooManyRequestsError
+        resp = MagicMock(status_code=429)
+        mock_fetch.side_effect = TooManyRequestsError("429", response=resp)
+
+        with pytest.raises(TrendsRateLimitError):
+            get_related_queries("テスト")

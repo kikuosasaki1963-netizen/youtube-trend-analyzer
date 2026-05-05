@@ -7,8 +7,22 @@ import streamlit as st
 
 from src.constants import GOOGLE_TRENDS_CATEGORIES, GOOGLE_TRENDS_TIMEFRAMES
 from src.session_keys import SessionKeys
-from src.trends_api import get_category_related_queries, get_category_related_topics
+from src.trends_api import (
+    TrendsRateLimitError,
+    get_category_related_queries,
+    get_category_related_topics,
+)
 from src.ui_components import csv_download_button
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def _cached_category_related_queries(cat: int, timeframe: str, geo: str = "JP"):
+    return get_category_related_queries(cat=cat, timeframe=timeframe, geo=geo)
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def _cached_category_related_topics(cat: int, timeframe: str, geo: str = "JP"):
+    return get_category_related_topics(cat=cat, timeframe=timeframe, geo=geo)
 
 
 def render() -> None:
@@ -35,12 +49,19 @@ def render() -> None:
         timeframe = GOOGLE_TRENDS_TIMEFRAMES[timeframe_label]
         try:
             with st.spinner("Google Trends データ取得中..."):
-                queries = get_category_related_queries(cat=cat_id, timeframe=timeframe)
-                topics = get_category_related_topics(cat=cat_id, timeframe=timeframe)
+                queries = _cached_category_related_queries(cat_id, timeframe)
+                topics = _cached_category_related_topics(cat_id, timeframe)
 
             st.session_state[SessionKeys.GOOGLE_RANKING_QUERIES] = queries
             st.session_state[SessionKeys.GOOGLE_RANKING_TOPICS] = topics
             st.session_state[SessionKeys.GOOGLE_RANKING_CATEGORY] = category
+        except TrendsRateLimitError as e:
+            st.warning(
+                f"⏳ {e}\n\n"
+                "Google Trends は短時間に多数のリクエストを送ると一時的にブロックします。"
+                "5〜30分ほど時間をおいて再度お試しください。"
+                "（同じ条件の結果は6時間キャッシュされます）",
+            )
         except Exception as e:
             st.error(f"データ取得に失敗しました: {e}")
 

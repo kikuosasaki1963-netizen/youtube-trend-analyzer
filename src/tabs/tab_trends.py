@@ -9,11 +9,24 @@ import streamlit as st
 
 from src.constants import TREND_PERIOD_MAP
 from src.trends_api import (
+    TrendsRateLimitError,
     get_trending_searches,
     get_interest_over_time,
     get_related_queries,
 )
 from src.ui_components import csv_download_button
+
+
+# 同じキーワードの連打や複数タブ間でのリクエスト重複を吸収する。
+# Google Trends データは48時間遅延なので6時間キャッシュは無害。
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def _cached_interest_over_time(keyword: str, timeframe: str, geo: str = "JP"):
+    return get_interest_over_time(keyword, timeframe=timeframe, geo=geo)
+
+
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def _cached_related_queries(keyword: str, geo: str = "JP"):
+    return get_related_queries(keyword, geo=geo)
 
 
 def render(search_query: str) -> None:
@@ -104,15 +117,22 @@ def _render_interest_over_time(search_query: str) -> None:
             try:
                 with st.spinner("Google Trends データ取得中..."):
                     timeframe = TREND_PERIOD_MAP[trend_period]
-                    interest_df = get_interest_over_time(
-                        search_query, timeframe=timeframe,
+                    interest_df = _cached_interest_over_time(
+                        search_query, timeframe,
                     )
-                    related = get_related_queries(search_query)
+                    related = _cached_related_queries(search_query)
 
                 st.session_state[SessionKeys.TREND_INTEREST] = interest_df
                 st.session_state[SessionKeys.TREND_RELATED] = related
                 st.session_state[SessionKeys.TREND_KEYWORD] = search_query
 
+            except TrendsRateLimitError as e:
+                st.warning(
+                    f"⏳ {e}\n\n"
+                    "Google Trends は短時間に多数のリクエストを送ると一時的にブロックします。"
+                    "5〜30分ほど時間をおいて再度お試しください。"
+                    "（同じキーワードの結果は6時間キャッシュされます）",
+                )
             except Exception as e:
                 st.error(f"データ取得に失敗しました: {e}")
 
