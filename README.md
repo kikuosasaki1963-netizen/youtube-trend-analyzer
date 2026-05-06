@@ -19,14 +19,56 @@ YouTube の急上昇/ジャンル別/サジェスト/バズ動画分析と、Goo
 
 ## セットアップ手順 (別PCに展開する場合)
 
-### 1. リポジトリを取得
+### かんたんセットアップ (推奨)
+
+クローンして付属の setup スクリプトを1回実行するだけで完了します。
+
+**macOS / Linux**
 
 ```bash
 git clone https://github.com/kikuosasaki1963-netizen/youtube-trend-analyzer.git
 cd youtube-trend-analyzer
+./setup.sh
 ```
 
-### 2. 仮想環境を作成して依存をインストール
+**Windows (PowerShell)**
+
+```powershell
+git clone https://github.com/kikuosasaki1963-netizen/youtube-trend-analyzer.git
+cd youtube-trend-analyzer
+.\setup.ps1
+```
+
+セットアップスクリプトは以下を自動で実行します:
+
+1. 仮想環境 `.venv` の作成
+2. 依存パッケージのインストール
+3. YouTube API キーの入力プロンプト → `.streamlit/secrets.toml` に保存
+
+完了後、表示されるコマンドで起動できます:
+
+```bash
+# macOS / Linux
+source .venv/bin/activate && streamlit run app.py
+
+# Windows
+.venv\Scripts\Activate.ps1; streamlit run app.py
+```
+
+ブラウザが自動で開きます (デフォルト: http://localhost:8501)。
+
+### YouTube API キーの取得
+
+セットアップスクリプトの実行前に、以下の手順で API キーを取得しておいてください:
+
+1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクトを作成
+2. 「APIとサービス」 → 「ライブラリ」 → **YouTube Data API v3** を有効化
+3. 「APIとサービス」 → 「認証情報」 → 「認証情報を作成」 → APIキー
+
+### 手動セットアップ (スクリプトを使わない場合)
+
+<details>
+<summary>展開して手順を表示</summary>
 
 **macOS / Linux**
 
@@ -34,6 +76,9 @@ cd youtube-trend-analyzer
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+mkdir -p .streamlit
+echo 'YOUTUBE_API_KEY = "<APIキー>"' > .streamlit/secrets.toml
+streamlit run app.py
 ```
 
 **Windows (PowerShell)**
@@ -42,29 +87,12 @@ pip install -r requirements.txt
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-```
-
-### 3. YouTube API キーを設定
-
-`.streamlit/secrets.toml` を作成し、以下を記入:
-
-```toml
-YOUTUBE_API_KEY = "ここにAPIキーを貼り付け"
-```
-
-APIキー取得手順:
-
-1. [Google Cloud Console](https://console.cloud.google.com/) でプロジェクトを作成
-2. 「APIとサービス」 → 「ライブラリ」 → **YouTube Data API v3** を有効化
-3. 「APIとサービス」 → 「認証情報」 → 「認証情報を作成」 → APIキー
-
-### 4. 起動
-
-```bash
+mkdir .streamlit -ErrorAction SilentlyContinue
+"YOUTUBE_API_KEY = `"<APIキー>`"" | Out-File .streamlit\secrets.toml
 streamlit run app.py
 ```
 
-ブラウザが自動で開きます (デフォルト: http://localhost:8501)。
+</details>
 
 ## トラブルシューティング
 
